@@ -1,0 +1,568 @@
+--[[
+🔥 AUTO FARM KILL POR NICK - REFEITO (CORRIGIDO) 🔥
+✅ Bypass único (sem processos duplicados)
+✅ Fluxo: Bypass → TP → Soco → 2s → Próximo
+✅ Morte para tudo → Respawn → Bypass → Farm
+✅ Sem oscilação na troca de alvo
+✅ Loop estável por longos períodos
+]]
+
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local LP = Players.LocalPlayer
+
+local Char, Root, Hum
+local AutoFarmAtivo = false
+local AlvosSelecionados = {}
+local AlvoIndex = 1
+local StatusAutoFarm = "DESATIVADO"
+local farmLoop = nil
+local isMinimized = false
+local fazendoBypass = false  -- TRAVA ANTI-DUPLICAÇÃO
+local trocandoAlvo = false  -- TRAVA ANTI-OSCILAÇÃO
+
+if CoreGui:FindFirstChild("AutoFarmNick") then CoreGui.AutoFarmNick:Destroy() end
+
+local function EnviarNotificacao(titulo, texto, duracao)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = titulo, Text = texto, Duration = duracao or 2
+        })
+    end)
+end
+
+local function AtualizarChar(nc)
+    Char = nc or LP.Character or LP.CharacterAdded:Wait()
+    Root = Char:WaitForChild("HumanoidRootPart", 5)
+    Hum = Char:WaitForChild("Humanoid", 5)
+end
+
+local function Soco()
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(0.08)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+end
+
+local function verificarSeEstouVivo()
+    if not Hum then return false end
+    return Hum.Health > 0
+end
+
+-- ========== BYPASS (ÚNICO, COM TRAVA) ==========
+local function ExecuteBypass()
+    if fazendoBypass then return false end
+    fazendoBypass = true
+    
+    StatusAutoFarm = "EXECUTANDO BYPASS"
+    
+    if not Char or not Root then AtualizarChar() end
+    
+    local sucesso = false
+    
+    if Root then
+        pcall(function()
+            local jogadores = Players:GetPlayers()
+            for i = #jogadores, 1, -1 do 
+                if jogadores[i] == LP then table.remove(jogadores, i) end 
+            end
+            
+            if #jogadores > 0 then
+                local alvo = jogadores[math.random(1, #jogadores)]
+                if alvo and alvo.Character and alvo.Character:FindFirstChild("HumanoidRootPart") then
+                    local pos = alvo.Character.HumanoidRootPart.Position + Vector3.new(0, 3, 0)
+                    Root.CFrame = CFrame.new(pos)
+                    task.wait(0.5)
+                    if Root and Root.Parent and (Root.Position - pos).Magnitude < 25 then
+                        sucesso = true
+                    end
+                end
+            end
+        end)
+    end
+    
+    fazendoBypass = false
+    return sucesso
+end
+
+-- ========== ROTA DO VOID ==========
+local function rotaDoVoid()
+    pcall(function()
+        if not Root or not Hum then return end
+        Hum.PlatformStand = true
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce = Vector3.new(9999999, 9999999, 9999999)
+        bv.Velocity = Vector3.new(0, 100, 0)
+        bv.Parent = Root
+        task.wait(2)
+        bv.Velocity = Vector3.new(-200, 0, 0)
+        task.wait(3.6)
+        bv.Velocity = Vector3.zero
+        Hum.PlatformStand = false
+        bv:Destroy()
+    end)
+end
+
+-- ========== FAZER BYPASS COM LOOP CONTROLADO ==========
+local function fazerBypassAteSucesso()
+    local sucesso = false
+    local tentativas = 0
+    
+    while AutoFarmAtivo and not sucesso do
+        tentativas += 1
+        print("💀 Bypass tentativa #" .. tentativas)
+        
+        sucesso = ExecuteBypass()
+        
+        if sucesso then
+            StatusAutoFarm = "BYPASS CONCLUÍDO"
+            print("✅ Bypass OK!")
+        else
+            print("❌ Falhou #" .. tentativas)
+            rotaDoVoid()
+            task.wait(5)
+            if LP.Character then AtualizarChar(LP.Character) end
+            task.wait(2)
+        end
+    end
+    
+    return sucesso
+end
+
+-- ========== ATACAR ALVO (TP + 1 SOCO + 2s) ==========
+local function atacarAlvo(nomeAlvo)
+    if trocandoAlvo then return true end
+    trocandoAlvo = true
+    
+    local player = Players:FindFirstChild(nomeAlvo)
+    if not player then
+        StatusAutoFarm = nomeAlvo .. " SAIU"
+        trocandoAlvo = false
+        return true
+    end
+    
+    if not player.Character then
+        StatusAutoFarm = nomeAlvo .. " AGUARDANDO"
+        trocandoAlvo = false
+        return true
+    end
+    
+    local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+    local targetHum = player.Character:FindFirstChildOfClass("Humanoid")
+    
+    if not targetRoot or not targetHum then
+        StatusAutoFarm = nomeAlvo .. " SEM PARTES"
+        trocandoAlvo = false
+        return true
+    end
+    
+    -- Não ignora só porque Health é 0 (pode ter corpo)
+    if not Root then
+        AtualizarChar()
+    end
+    
+    if not Root then
+        trocandoAlvo = false
+        return false
+    end
+    
+    -- TELEPORTA UMA VEZ (sem oscilar)
+    local posicaoAtras = targetRoot.CFrame * CFrame.new(0, 0, -3)
+    Root.CFrame = CFrame.lookAt(posicaoAtras.Position, targetRoot.Position)
+    
+    StatusAutoFarm = "TP PARA: " .. nomeAlvo
+    task.wait(0.3)
+    
+    -- SOCO
+    Soco()
+    StatusAutoFarm = "SOCANDO: " .. nomeAlvo
+    task.wait(0.2)
+    
+    -- ESPERA 2s
+    StatusAutoFarm = "AGUARDANDO 2s: " .. nomeAlvo
+    task.wait(2)
+    
+    trocandoAlvo = false
+    return true
+end
+
+-- ========== PEGAR PRÓXIMO ALVO ==========
+local function GetNextTarget()
+    local nomes = {}
+    for nome, _ in pairs(AlvosSelecionados) do
+        local player = Players:FindFirstChild(nome)
+        if player then
+            table.insert(nomes, nome)
+        end
+    end
+    
+    if #nomes == 0 then return nil end
+    
+    table.sort(nomes)
+    
+    if AlvoIndex > #nomes then AlvoIndex = 1 end
+    local alvo = nomes[AlvoIndex]
+    AlvoIndex += 1
+    if AlvoIndex > #nomes then AlvoIndex = 1 end
+    
+    return alvo
+end
+
+-- ========== CONTROLADOR PRINCIPAL (ÚNICO) ==========
+local function StartAutoFarm()
+    AutoFarmAtivo = true
+    
+    farmLoop = task.spawn(function()
+        -- BYPASS ÚNICO
+        local sucesso = fazerBypassAteSucesso()
+        
+        if not sucesso or not AutoFarmAtivo then
+            StopAutoFarm()
+            return
+        end
+        
+        task.wait(1)
+        
+        -- LOOP PRINCIPAL
+        while AutoFarmAtivo do
+            -- VERIFICA MORTE
+            if not verificarSeEstouVivo() then
+                StatusAutoFarm = "MORTO - AGUARDANDO RESPAWN"
+                
+                -- ESPERA RESPAWN
+                repeat 
+                    task.wait(1) 
+                until LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") and LP.Character:FindFirstChildOfClass("Humanoid").Health > 0
+                
+                AtualizarChar()
+                
+                -- BYPASS DE NOVO
+                StatusAutoFarm = "REFAZENDO BYPASS"
+                local ok = fazerBypassAteSucesso()
+                
+                if not ok or not AutoFarmAtivo then
+                    StopAutoFarm()
+                    return
+                end
+                
+                StatusAutoFarm = "BYPASS CONCLUÍDO"
+                task.wait(1)
+            end
+            
+            -- PEGA PRÓXIMO ALVO
+            local alvo = GetNextTarget()
+            if not alvo then
+                StatusAutoFarm = "SEM ALVOS - AGUARDANDO"
+                task.wait(2)
+                continue
+            end
+            
+            -- ATACA O ALVO
+            atacarAlvo(alvo)
+        end
+    end)
+end
+
+local function StopAutoFarm()
+    AutoFarmAtivo = false
+    AlvoIndex = 1
+    trocandoAlvo = false
+    fazendoBypass = false
+    
+    if farmLoop then
+        task.cancel(farmLoop)
+        farmLoop = nil
+    end
+    
+    StatusAutoFarm = "DESATIVADO"
+end
+
+-- ========== UI ==========
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoFarmNick"
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local Panel = Instance.new("Frame")
+Panel.Parent = ScreenGui
+Panel.BackgroundColor3 = Color3.fromRGB(10, 22, 15)
+Panel.BackgroundTransparency = 0.25
+Panel.Position = UDim2.new(0.5, -180, 0.5, -180)
+Panel.Size = UDim2.new(0, 360, 0, 360)
+Panel.Active = true
+Panel.Draggable = true
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 16)
+
+local Stroke = Instance.new("UIStroke", Panel)
+Stroke.Color = Color3.fromRGB(0, 255, 128)
+Stroke.Thickness = 2
+Stroke.Transparency = 0.3
+
+local TopBar = Instance.new("Frame")
+TopBar.Parent = Panel
+TopBar.BackgroundColor3 = Color3.fromRGB(15, 30, 20)
+TopBar.BackgroundTransparency = 0.1
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 16)
+
+local Title = Instance.new("TextLabel")
+Title.Parent = TopBar
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.Size = UDim2.new(0, 150, 1, 0)
+Title.Font = Enum.Font.GothamBlack
+Title.Text = "AUTO FARM"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local BtnMin = Instance.new("TextButton")
+BtnMin.Parent = TopBar
+BtnMin.BackgroundColor3 = Color3.fromRGB(18, 38, 25)
+BtnMin.BackgroundTransparency = 0.3
+BtnMin.Position = UDim2.new(1, -60, 0.5, -13)
+BtnMin.Size = UDim2.new(0, 26, 0, 26)
+BtnMin.Font = Enum.Font.GothamBold
+BtnMin.Text = "—"
+BtnMin.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnMin.TextSize = 14
+BtnMin.AutoButtonColor = false
+Instance.new("UICorner", BtnMin).CornerRadius = UDim.new(0, 6)
+
+local BtnClose = Instance.new("TextButton")
+BtnClose.Parent = TopBar
+BtnClose.BackgroundColor3 = Color3.fromRGB(200, 50, 60)
+BtnClose.BackgroundTransparency = 0.2
+BtnClose.Position = UDim2.new(1, -30, 0.5, -13)
+BtnClose.Size = UDim2.new(0, 26, 0, 26)
+BtnClose.Font = Enum.Font.GothamBold
+BtnClose.Text = "X"
+BtnClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnClose.TextSize = 14
+BtnClose.AutoButtonColor = false
+Instance.new("UICorner", BtnClose).CornerRadius = UDim.new(0, 6)
+
+local Conteudo = Instance.new("Frame")
+Conteudo.Parent = Panel
+Conteudo.BackgroundTransparency = 1
+Conteudo.Position = UDim2.new(0, 0, 0, 40)
+Conteudo.Size = UDim2.new(1, 0, 1, -40)
+
+local Contador = Instance.new("TextLabel")
+Contador.Parent = Conteudo
+Contador.BackgroundTransparency = 1
+Contador.Position = UDim2.new(0, 15, 0, 5)
+Contador.Size = UDim2.new(0, 200, 0, 20)
+Contador.Font = Enum.Font.GothamBold
+Contador.Text = "Selecionados: 0"
+Contador.TextColor3 = Color3.fromRGB(0, 255, 128)
+Contador.TextSize = 12
+Contador.TextXAlignment = Enum.TextXAlignment.Left
+
+local PlayerList = Instance.new("ScrollingFrame")
+PlayerList.Parent = Conteudo
+PlayerList.BackgroundTransparency = 1
+PlayerList.Position = UDim2.new(0, 10, 0, 30)
+PlayerList.Size = UDim2.new(1, -20, 0, 190)
+PlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+PlayerList.ScrollBarThickness = 3
+PlayerList.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 128)
+Instance.new("UIListLayout", PlayerList).Padding = UDim.new(0, 4)
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Parent = Conteudo
+StatusLabel.BackgroundColor3 = Color3.fromRGB(15, 30, 20)
+StatusLabel.BackgroundTransparency = 0.2
+StatusLabel.Position = UDim2.new(0, 10, 0, 228)
+StatusLabel.Size = UDim2.new(1, -20, 0, 25)
+StatusLabel.Font = Enum.Font.GothamBold
+StatusLabel.Text = "STATUS: DESATIVADO"
+StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+StatusLabel.TextSize = 11
+Instance.new("UICorner", StatusLabel).CornerRadius = UDim.new(0, 6)
+
+local BtnSelecionarTodos = Instance.new("TextButton")
+BtnSelecionarTodos.Parent = Conteudo
+BtnSelecionarTodos.BackgroundColor3 = Color3.fromRGB(0, 180, 90)
+BtnSelecionarTodos.BackgroundTransparency = 0.2
+BtnSelecionarTodos.Position = UDim2.new(0, 10, 0, 258)
+BtnSelecionarTodos.Size = UDim2.new(0, 160, 0, 25)
+BtnSelecionarTodos.Font = Enum.Font.GothamBold
+BtnSelecionarTodos.Text = "SELECIONAR TODOS"
+BtnSelecionarTodos.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnSelecionarTodos.TextSize = 10
+BtnSelecionarTodos.AutoButtonColor = false
+Instance.new("UICorner", BtnSelecionarTodos).CornerRadius = UDim.new(0, 6)
+
+local BtnDesmarcarTodos = Instance.new("TextButton")
+BtnDesmarcarTodos.Parent = Conteudo
+BtnDesmarcarTodos.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+BtnDesmarcarTodos.BackgroundTransparency = 0.3
+BtnDesmarcarTodos.Position = UDim2.new(0, 180, 0, 258)
+BtnDesmarcarTodos.Size = UDim2.new(0, 160, 0, 25)
+BtnDesmarcarTodos.Font = Enum.Font.GothamBold
+BtnDesmarcarTodos.Text = "DESMARCAR TODOS"
+BtnDesmarcarTodos.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnDesmarcarTodos.TextSize = 10
+BtnDesmarcarTodos.AutoButtonColor = false
+Instance.new("UICorner", BtnDesmarcarTodos).CornerRadius = UDim.new(0, 6)
+
+local BtnIniciar = Instance.new("TextButton")
+BtnIniciar.Parent = Conteudo
+BtnIniciar.BackgroundColor3 = Color3.fromRGB(0, 255, 128)
+BtnIniciar.Position = UDim2.new(0, 10, 0, 288)
+BtnIniciar.Size = UDim2.new(0, 160, 0, 25)
+BtnIniciar.Font = Enum.Font.GothamBlack
+BtnIniciar.Text = "INICIAR"
+BtnIniciar.TextColor3 = Color3.fromRGB(10, 22, 15)
+BtnIniciar.TextSize = 11
+BtnIniciar.AutoButtonColor = false
+Instance.new("UICorner", BtnIniciar).CornerRadius = UDim.new(0, 6)
+
+local BtnParar = Instance.new("TextButton")
+BtnParar.Parent = Conteudo
+BtnParar.BackgroundColor3 = Color3.fromRGB(200, 50, 60)
+BtnParar.Position = UDim2.new(0, 180, 0, 288)
+BtnParar.Size = UDim2.new(0, 160, 0, 25)
+BtnParar.Font = Enum.Font.GothamBlack
+BtnParar.Text = "PARAR"
+BtnParar.TextColor3 = Color3.fromRGB(255, 255, 255)
+BtnParar.TextSize = 11
+BtnParar.AutoButtonColor = false
+Instance.new("UICorner", BtnParar).CornerRadius = UDim.new(0, 6)
+
+-- ========== FUNÇÕES UI ==========
+local function RefreshPlayerList()
+    for _, child in pairs(PlayerList:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    
+    local nomes = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then table.insert(nomes, p.Name) end
+    end
+    table.sort(nomes)
+    
+    PlayerList.CanvasSize = UDim2.new(0, 0, 0, #nomes * 34)
+    
+    for _, nome in pairs(nomes) do
+        local Row = Instance.new("Frame")
+        Row.Parent = PlayerList
+        Row.BackgroundColor3 = Color3.fromRGB(18, 38, 25)
+        Row.BackgroundTransparency = 0.4
+        Row.Size = UDim2.new(1, 0, 0, 30)
+        Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 6)
+        
+        local Check = Instance.new("TextButton")
+        Check.Parent = Row
+        Check.BackgroundTransparency = 1
+        Check.Position = UDim2.new(0, 5, 0, 0)
+        Check.Size = UDim2.new(0, 25, 1, 0)
+        Check.Font = Enum.Font.GothamBold
+        Check.Text = AlvosSelecionados[nome] and "☑" or "☐"
+        Check.TextColor3 = AlvosSelecionados[nome] and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(255, 255, 255)
+        Check.TextSize = 16
+        
+        local NomeLabel = Instance.new("TextLabel")
+        NomeLabel.Parent = Row
+        NomeLabel.BackgroundTransparency = 1
+        NomeLabel.Position = UDim2.new(0, 30, 0, 0)
+        NomeLabel.Size = UDim2.new(1, -35, 1, 0)
+        NomeLabel.Font = Enum.Font.Gotham
+        NomeLabel.Text = nome
+        NomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        NomeLabel.TextSize = 12
+        NomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        Check.MouseButton1Click:Connect(function()
+            if AlvosSelecionados[nome] then
+                AlvosSelecionados[nome] = nil
+                Check.Text = "☐"
+                Check.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                AlvosSelecionados[nome] = true
+                Check.Text = "☑"
+                Check.TextColor3 = Color3.fromRGB(0, 255, 128)
+            end
+            
+            local count = 0
+            for _ in pairs(AlvosSelecionados) do count += 1 end
+            Contador.Text = "Selecionados: " .. count
+        end)
+    end
+    
+    local count = 0
+    for _ in pairs(AlvosSelecionados) do count += 1 end
+    Contador.Text = "Selecionados: " .. count
+end
+
+BtnMin.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        Conteudo.Visible = false
+        Panel.Size = UDim2.new(0, 360, 0, 40)
+    else
+        Conteudo.Visible = true
+        Panel.Size = UDim2.new(0, 360, 0, 360)
+    end
+end)
+
+BtnClose.MouseButton1Click:Connect(function()
+    StopAutoFarm()
+    ScreenGui:Destroy()
+end)
+
+BtnSelecionarTodos.MouseButton1Click:Connect(function()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then AlvosSelecionados[p.Name] = true end
+    end
+    RefreshPlayerList()
+end)
+
+BtnDesmarcarTodos.MouseButton1Click:Connect(function()
+    AlvosSelecionados = {}
+    RefreshPlayerList()
+end)
+
+BtnIniciar.MouseButton1Click:Connect(function()
+    local count = 0
+    for _ in pairs(AlvosSelecionados) do count += 1 end
+    
+    if count == 0 then
+        EnviarNotificacao("Auto Farm", "Selecione pelo menos um alvo!", 2)
+        return
+    end
+    
+    AtualizarChar()
+    StartAutoFarm()
+end)
+
+BtnParar.MouseButton1Click:Connect(function()
+    StopAutoFarm()
+end)
+
+task.spawn(function()
+    while true do
+        StatusLabel.Text = "STATUS: " .. StatusAutoFarm
+        task.wait(0.5)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        RefreshPlayerList()
+        task.wait(5)
+    end
+end)
+
+RefreshPlayerList()
+
+print("✅ Auto Farm REFEITO!")
+print("🔒 Bypass único | 🔄 Sem oscilação | 💀 Morte para tudo")
